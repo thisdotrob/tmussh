@@ -26,6 +26,12 @@ The installer downloads the latest GitHub release for your platform and installs
 
 Remote tmux commands run through `/bin/sh` and discover `tmux` with `command -v` plus common install locations, including Homebrew, system paths, Snap, Nix, and user-local bin directories. `tmussh` runs remote tmux with `-u` so direct SSH commands still use UTF-8 output when the remote shell does not load an interactive locale.
 
+For compatibility with hosts that do not have newer terminal definitions installed, `tmussh` exposes `TERM=xterm-256color` to remote tmux by default. Override it when the remote host has the terminfo entry you want to use:
+
+```sh
+tmussh --remote-term xterm-ghostty user@host
+```
+
 If tmux is installed somewhere unusual, pass the path explicitly:
 
 ```sh
