@@ -18,7 +18,7 @@ need() {
 
 usage() {
   cat <<EOF
-Usage: scripts/release.sh minor|major
+Usage: scripts/release.sh patch|minor|major
 
 When no vX.Y.Z tags exist, publishes the current Cargo.toml version as the
 initial release. Otherwise, creates a release branch, bumps
@@ -77,7 +77,8 @@ next_version() {
   case "$bump" in
     major) printf '%s.0.0\n' "$((major + 1))" ;;
     minor) printf '%s.%s.0\n' "$major" "$((minor + 1))" ;;
-    *) fail "release type must be minor or major" ;;
+    patch) printf '%s.%s.%s\n' "$major" "$minor" "$((patch + 1))" ;;
+    *) fail "release type must be patch, minor, or major" ;;
   esac
 }
 
@@ -170,7 +171,7 @@ case "$1" in
     usage
     exit 0
     ;;
-  minor | major) bump=$1 ;;
+  patch | minor | major) bump=$1 ;;
   *)
     usage
     exit 1
