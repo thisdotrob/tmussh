@@ -14,6 +14,8 @@ const TMUX_CANDIDATES: &[&str] = &[
     "$HOME/bin/tmux",
 ];
 
+pub const DEFAULT_REMOTE_TERM: &str = "xterm-256color";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TmuxAction {
     Attach(String),
@@ -45,10 +47,14 @@ pub fn validate_new_session_name(name: &str) -> std::result::Result<(), &'static
     }
 }
 
-pub fn list_sessions(destination: &str, tmux_path: Option<&str>) -> Result<Vec<String>> {
+pub fn list_sessions(
+    destination: &str,
+    tmux_path: Option<&str>,
+    remote_term: &str,
+) -> Result<Vec<String>> {
     let output = Command::new("ssh")
         .arg(destination)
-        .arg(list_sessions_command(tmux_path))
+        .arg(list_sessions_command(tmux_path, remote_term))
         .stdin(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()
@@ -87,10 +93,11 @@ pub fn run_remote_tmux(
     destination: &str,
     action: &TmuxAction,
     tmux_path: Option<&str>,
+    remote_term: &str,
 ) -> Result<ExitStatus> {
     let command = match action {
-        TmuxAction::Attach(session) => attach_command(session, tmux_path),
-        TmuxAction::New(session) => new_session_command(session, tmux_path),
+        TmuxAction::Attach(session) => attach_command(session, tmux_path, remote_term),
+        TmuxAction::New(session) => new_session_command(session, tmux_path, remote_term),
         TmuxAction::Quit => return Err(eyre!("cannot run a quit action")),
     };
 
@@ -102,28 +109,31 @@ pub fn run_remote_tmux(
         .wrap_err("failed to run ssh")
 }
 
-pub fn attach_command(session: &str, tmux_path: Option<&str>) -> String {
+pub fn attach_command(session: &str, tmux_path: Option<&str>, remote_term: &str) -> String {
     remote_tmux_command(
         tmux_path,
         &format!("attach-session -t {}", shell_quote(session)),
+        remote_term,
     )
 }
 
-pub fn new_session_command(session: &str, tmux_path: Option<&str>) -> String {
+pub fn new_session_command(session: &str, tmux_path: Option<&str>, remote_term: &str) -> String {
     remote_tmux_command(
         tmux_path,
         &format!("new-session -A -s {}", shell_quote(session)),
+        remote_term,
     )
 }
 
-pub fn list_sessions_command(tmux_path: Option<&str>) -> String {
-    remote_tmux_command(tmux_path, "list-sessions -F '#S' 2>&1")
+pub fn list_sessions_command(tmux_path: Option<&str>, remote_term: &str) -> String {
+    remote_tmux_command(tmux_path, "list-sessions -F '#S' 2>&1", remote_term)
 }
 
-pub fn remote_tmux_command(tmux_path: Option<&str>, tmux_args: &str) -> String {
+pub fn remote_tmux_command(tmux_path: Option<&str>, tmux_args: &str, remote_term: &str) -> String {
     let script = format!(
-        "{}exec \"$tmussh_tmux\" -u {tmux_args}",
-        tmux_lookup_script(tmux_path)
+        "{}TERM={}; export TERM; exec \"$tmussh_tmux\" -u {tmux_args}",
+        tmux_lookup_script(tmux_path),
+        shell_quote(remote_term),
     );
 
     format!("/bin/sh -lc {}", shell_quote(&script))
@@ -237,22 +247,26 @@ mod tests {
     #[test]
     fn builds_remote_commands_with_shell_quoting() {
         assert_eq!(
-            attach_command("work", Some("/custom/bin/tmux")),
-            r#"/bin/sh -lc 'tmussh_tmux='\''/custom/bin/tmux'\''; if [ ! -x "$tmussh_tmux" ]; then printf '\''%s\n'\'' "tmussh: tmux is not executable at $tmussh_tmux"; exit 127; fi; exec "$tmussh_tmux" -u attach-session -t '\''work'\'''"#
+            attach_command("work", Some("/custom/bin/tmux"), DEFAULT_REMOTE_TERM),
+            r#"/bin/sh -lc 'tmussh_tmux='\''/custom/bin/tmux'\''; if [ ! -x "$tmussh_tmux" ]; then printf '\''%s\n'\'' "tmussh: tmux is not executable at $tmussh_tmux"; exit 127; fi; TERM='\''xterm-256color'\''; export TERM; exec "$tmussh_tmux" -u attach-session -t '\''work'\'''"#
         );
         assert_eq!(
-            attach_command("ops'prod", Some("/custom/bin/tmux")),
-            r#"/bin/sh -lc 'tmussh_tmux='\''/custom/bin/tmux'\''; if [ ! -x "$tmussh_tmux" ]; then printf '\''%s\n'\'' "tmussh: tmux is not executable at $tmussh_tmux"; exit 127; fi; exec "$tmussh_tmux" -u attach-session -t '\''ops'\''\'\'''\''prod'\'''"#
+            attach_command("ops'prod", Some("/custom/bin/tmux"), DEFAULT_REMOTE_TERM),
+            r#"/bin/sh -lc 'tmussh_tmux='\''/custom/bin/tmux'\''; if [ ! -x "$tmussh_tmux" ]; then printf '\''%s\n'\'' "tmussh: tmux is not executable at $tmussh_tmux"; exit 127; fi; TERM='\''xterm-256color'\''; export TERM; exec "$tmussh_tmux" -u attach-session -t '\''ops'\''\'\'''\''prod'\'''"#
         );
         assert_eq!(
-            new_session_command("new-work", Some("/custom/bin/tmux")),
-            r#"/bin/sh -lc 'tmussh_tmux='\''/custom/bin/tmux'\''; if [ ! -x "$tmussh_tmux" ]; then printf '\''%s\n'\'' "tmussh: tmux is not executable at $tmussh_tmux"; exit 127; fi; exec "$tmussh_tmux" -u new-session -A -s '\''new-work'\'''"#
+            new_session_command("new-work", Some("/custom/bin/tmux"), DEFAULT_REMOTE_TERM),
+            r#"/bin/sh -lc 'tmussh_tmux='\''/custom/bin/tmux'\''; if [ ! -x "$tmussh_tmux" ]; then printf '\''%s\n'\'' "tmussh: tmux is not executable at $tmussh_tmux"; exit 127; fi; TERM='\''xterm-256color'\''; export TERM; exec "$tmussh_tmux" -u new-session -A -s '\''new-work'\'''"#
+        );
+        assert_eq!(
+            attach_command("work", Some("/custom/bin/tmux"), "xterm-ghostty"),
+            r#"/bin/sh -lc 'tmussh_tmux='\''/custom/bin/tmux'\''; if [ ! -x "$tmussh_tmux" ]; then printf '\''%s\n'\'' "tmussh: tmux is not executable at $tmussh_tmux"; exit 127; fi; TERM='\''xterm-ghostty'\''; export TERM; exec "$tmussh_tmux" -u attach-session -t '\''work'\'''"#
         );
     }
 
     #[test]
     fn list_command_searches_common_tmux_locations() {
-        let command = list_sessions_command(None);
+        let command = list_sessions_command(None, DEFAULT_REMOTE_TERM);
 
         assert!(command.starts_with("/bin/sh -lc "));
         assert!(command.contains("command -v tmux"));
@@ -261,8 +275,8 @@ mod tests {
         assert!(command.contains("/run/current-system/sw/bin/tmux"));
         assert!(command.contains("$HOME/.nix-profile/bin/tmux"));
         assert_eq!(
-            list_sessions_command(Some("/custom/bin/tmux")),
-            r#"/bin/sh -lc 'tmussh_tmux='\''/custom/bin/tmux'\''; if [ ! -x "$tmussh_tmux" ]; then printf '\''%s\n'\'' "tmussh: tmux is not executable at $tmussh_tmux"; exit 127; fi; exec "$tmussh_tmux" -u list-sessions -F '\''#S'\'' 2>&1'"#
+            list_sessions_command(Some("/custom/bin/tmux"), DEFAULT_REMOTE_TERM),
+            r#"/bin/sh -lc 'tmussh_tmux='\''/custom/bin/tmux'\''; if [ ! -x "$tmussh_tmux" ]; then printf '\''%s\n'\'' "tmussh: tmux is not executable at $tmussh_tmux"; exit 127; fi; TERM='\''xterm-256color'\''; export TERM; exec "$tmussh_tmux" -u list-sessions -F '\''#S'\'' 2>&1'"#
         );
     }
 
@@ -273,6 +287,7 @@ mod tests {
             .arg(remote_tmux_command(
                 Some("/bin/echo"),
                 &format!("hello {}", shell_quote("ops'prod")),
+                DEFAULT_REMOTE_TERM,
             ))
             .output()
             .unwrap();

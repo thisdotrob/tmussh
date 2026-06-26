@@ -2,7 +2,7 @@ use std::io::{self, Stdout, Write};
 use std::process;
 
 use clap::Parser;
-use color_eyre::eyre::{Result, WrapErr};
+use color_eyre::eyre::{Result, WrapErr, bail};
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyModifiers},
@@ -18,7 +18,9 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
-use tmussh::{TmuxAction, list_sessions, run_remote_tmux, validate_new_session_name};
+use tmussh::{
+    DEFAULT_REMOTE_TERM, TmuxAction, list_sessions, run_remote_tmux, validate_new_session_name,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "tmussh")]
@@ -30,6 +32,10 @@ struct Args {
     /// Remote path to tmux, used when automatic discovery cannot find it.
     #[arg(long, value_name = "PATH")]
     tmux_path: Option<String>,
+
+    /// Terminal type to expose to remote tmux.
+    #[arg(long, value_name = "TERM")]
+    remote_term: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -37,7 +43,12 @@ fn main() -> Result<()> {
 
     let args = Args::parse();
     let tmux_path = args.tmux_path.as_deref();
-    let sessions = list_sessions(&args.destination, tmux_path)?;
+    let remote_term = args.remote_term.as_deref().unwrap_or(DEFAULT_REMOTE_TERM);
+    if remote_term.is_empty() {
+        bail!("--remote-term cannot be empty");
+    }
+
+    let sessions = list_sessions(&args.destination, tmux_path, remote_term)?;
 
     let mut tui = Tui::new()?;
     let action = if sessions.is_empty() {
@@ -55,7 +66,7 @@ fn main() -> Result<()> {
     match action {
         TmuxAction::Quit => Ok(()),
         TmuxAction::Attach(_) | TmuxAction::New(_) => {
-            let status = run_remote_tmux(&args.destination, &action, tmux_path)?;
+            let status = run_remote_tmux(&args.destination, &action, tmux_path, remote_term)?;
             process::exit(status.code().unwrap_or(1));
         }
     }
