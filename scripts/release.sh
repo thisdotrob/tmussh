@@ -20,12 +20,14 @@ usage() {
   cat <<EOF
 Usage: scripts/release.sh minor|major
 
-Creates a release branch, bumps Cargo.toml/Cargo.lock, opens a PR, and
-pushes a vX.Y.Z tag after the PR is merged. Pushing the tag triggers the
-GitHub release workflow.
+When no vX.Y.Z tags exist, publishes the current Cargo.toml version as the
+initial release. Otherwise, creates a release branch, bumps
+Cargo.toml/Cargo.lock, opens a PR, and pushes a vX.Y.Z tag after the PR is
+merged. Pushing the tag triggers the GitHub release workflow.
 
 Environment:
   TMUSSH_RELEASE_MERGE=0    Open the release PR without merging/tagging it.
+                            For the initial release, print tag commands only.
   TMUSSH_RELEASE_CHECKS=0   Skip local cargo checks before committing.
 EOF
 }
@@ -42,9 +44,8 @@ current_version() {
   ' "$@"
 }
 
-next_version() {
-  bump=$1
-  version=$2
+validate_version() {
+  version=$1
 
   old_ifs=$IFS
   IFS=.
@@ -53,13 +54,25 @@ next_version() {
 
   [ "$#" -eq 3 ] || fail "Cargo.toml version must be MAJOR.MINOR.PATCH"
 
+  case "$version" in
+    *[!0-9.]* | *..* | .* | *.) fail "Cargo.toml version must be MAJOR.MINOR.PATCH" ;;
+  esac
+}
+
+next_version() {
+  bump=$1
+  version=$2
+
+  validate_version "$version"
+
+  old_ifs=$IFS
+  IFS=.
+  set -- $version
+  IFS=$old_ifs
+
   major=$1
   minor=$2
   patch=$3
-
-  case "$major.$minor.$patch" in
-    *[!0-9.]* | *..* | .* | *.) fail "Cargo.toml version must be MAJOR.MINOR.PATCH" ;;
-  esac
 
   case "$bump" in
     major) printf '%s.0.0\n' "$((major + 1))" ;;
@@ -118,6 +131,10 @@ ensure_branch_available() {
   fi
 }
 
+remote_release_tags() {
+  git ls-remote --tags "$REMOTE" 'refs/tags/v[0-9]*.[0-9]*.[0-9]*'
+}
+
 run_local_checks() {
   if [ "$RUN_CHECKS" = "0" ]; then
     return
@@ -170,11 +187,40 @@ ensure_clean_worktree
 
 git fetch "$REMOTE" "$BASE_BRANCH" --tags --prune
 version=$(git show "$REMOTE/$BASE_BRANCH:Cargo.toml" | current_version)
-next=$(next_version "$bump" "$version")
+release_tags=$(remote_release_tags) || fail "failed to list release tags from $REMOTE"
+
+if [ -n "$release_tags" ]; then
+  next=$(next_version "$bump" "$version")
+  initial_release=0
+else
+  validate_version "$version"
+  next=$version
+  initial_release=1
+fi
+
 tag="v$next"
 branch="release/$tag"
 
 ensure_tag_available "$tag"
+
+if [ "$initial_release" = "1" ]; then
+  if [ "$MERGE_RELEASE" = "0" ]; then
+    cat <<EOF
+No existing release tags were found. Cargo.toml is already at $next, so no
+release PR is needed. Publish the initial release with:
+
+  git fetch $REMOTE $BASE_BRANCH --tags --prune
+  git tag -a $tag -m $tag $REMOTE/$BASE_BRANCH
+  git push $REMOTE $tag
+EOF
+    exit 0
+  fi
+
+  publish_tag "$tag"
+  printf 'Released %s. The GitHub release workflow will publish assets.\n' "$tag"
+  exit 0
+fi
+
 ensure_branch_available "$branch"
 
 git switch -c "$branch" "$REMOTE/$BASE_BRANCH"
