@@ -1,0 +1,40 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect Rust project
+        id: rust_project
+        run: |
+          if [ -f Cargo.toml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Rust toolchain
+        if: steps.rust_project.outputs.present == 'true'
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+
+      - name: Check formatting
+        if: steps.rust_project.outputs.present == 'true'
+        run: cargo fmt --check
+
+      - name: Run clippy
+        if: steps.rust_project.outputs.present == 'true'
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run tests
+        if: steps.rust_project.outputs.present == 'true'
+        run: cargo test
