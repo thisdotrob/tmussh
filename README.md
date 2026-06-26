@@ -56,3 +56,14 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 ```
+
+## Releasing
+
+Maintainers can publish a new minor or major release with:
+
+```sh
+scripts/release.sh minor
+scripts/release.sh major
+```
+
+The script creates and merges a release PR, tags `main` as `vX.Y.Z`, and lets the release workflow publish the GitHub release assets. Set `TMUSSH_RELEASE_MERGE=0` to stop after opening the release PR.

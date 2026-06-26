@@ -27,9 +27,12 @@ jobs:
         if: steps.rust_project.outputs.present == 'true'
         run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
 
-      - name: Check install script syntax
-        if: hashFiles('scripts/install.sh') != ''
-        run: sh -n scripts/install.sh
+      - name: Check shell script syntax
+        if: hashFiles('scripts/*.sh') != ''
+        run: |
+          for script in scripts/*.sh; do
+            sh -n "$script"
+          done
 
       - name: Check formatting
         if: steps.rust_project.outputs.present == 'true'
