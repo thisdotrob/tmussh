@@ -8,6 +8,14 @@ tmussh user@host
 
 The command lists tmux sessions on the remote host, opens a local terminal UI, and then attaches to the selected session over `ssh -t`. It can also create a new remote tmux session.
 
+## Install
+
+```sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/thisdotrob/tmussh/main/scripts/install.sh | sh
+```
+
+The installer downloads the latest GitHub release for your platform and installs `tmussh` to `~/.local/bin` by default. Set `TMUSSH_INSTALL_DIR` to choose another location.
+
 ## Requirements
 
 - A local `ssh` binary.
