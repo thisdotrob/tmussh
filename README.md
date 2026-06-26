@@ -65,9 +65,10 @@ cargo test
 
 ## Releasing
 
-Maintainers can publish a new minor or major release with:
+Maintainers can publish a new patch, minor, or major release with:
 
 ```sh
+scripts/release.sh patch
 scripts/release.sh minor
 scripts/release.sh major
 ```
