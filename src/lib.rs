@@ -72,13 +72,13 @@ pub fn classify_list_sessions_output(
     stdout: &str,
     stderr: &str,
 ) -> Result<Vec<String>> {
-    if success {
-        return Ok(parse_session_list(stdout));
-    }
-
     let combined = format!("{stdout}\n{stderr}");
     if is_no_tmux_server_error(&combined) {
         return Ok(Vec::new());
+    }
+
+    if success {
+        return Ok(parse_session_list(stdout));
     }
 
     let detail = combined.trim();
@@ -190,6 +190,8 @@ fn is_no_tmux_server_error(message: &str) -> bool {
     let message = message.to_ascii_lowercase();
     message.contains("no server running")
         || message.contains("failed to connect to server")
+        || (message.contains("error connecting to")
+            && message.contains("no such file or directory"))
         || message.contains("no sessions")
 }
 
@@ -211,6 +213,18 @@ mod tests {
             classify_list_sessions_output(false, "", "no server running on /tmp/tmux-1000/default")
                 .unwrap();
 
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn classifies_missing_tmux_socket_as_empty() {
+        let message =
+            "error connecting to /private/tmp/tmux-501/default (No such file or directory)";
+
+        let sessions = classify_list_sessions_output(false, message, "").unwrap();
+        assert!(sessions.is_empty());
+
+        let sessions = classify_list_sessions_output(true, message, "").unwrap();
         assert!(sessions.is_empty());
     }
 
